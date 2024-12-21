@@ -1,0 +1,12 @@
+{
+    "display_name": "Prompt Hierarchy Manager",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": ["index.js"],
+    "css": "style.css",
+    "author": "beermanitspartytime",
+    "version": "0.1.0",
+    "homepage": "https://github.com/beermanitspartytime/prompt-hierarchy",
+    "auto_update": false
+}
