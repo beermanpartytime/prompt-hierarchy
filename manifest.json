@@ -1,5 +1,5 @@
 {
-    "display_name": "Prompt Hierarchy 3",
+    "display_name": "Prompt Hierarchy",
     "loading_order": 12,
     "requires": [],
     "optional": [],
@@ -17,7 +17,7 @@
     ],
     "author": "beermanpartytime",
     "version": "1.0.0",
-    "homePage": "https://github.com/beermanpartytime/prompt-hierarchy-3",
+    "homePage": "https://github.com/beermanpartytime/prompt-hierarchy",
     "extension": {
         "menu": true,
         "settings": true,
