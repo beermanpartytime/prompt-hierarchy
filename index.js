@@ -1,247 +1,281 @@
+// Prompt Hierarchy Extension
 const MODULE_NAME = 'prompt-hierarchy';
 
-// Default settings
-const defaultSettings = {
-    enabled: false,
-    autoCollapse: false,
-    nestingBehavior: 'drag',
-    promptHierarchy: {}
-};
-
-let settingsReady = false;
-
-// Initialize extension
-jQuery(() => {
-    try {
-        // Register extension
-        window['extensions'] = window['extensions'] || {};
-        window['extensions'][MODULE_NAME] = {
-            name: MODULE_NAME,
-            init,
-            onEnable,
-            onDisable,
-        };
-        console.log(`[${MODULE_NAME}] Extension registered.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during extension registration:`, error);
+// Logger
+class Logger {
+    static PREFIX = '[Prompt Hierarchy]';
+    static LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+    
+    constructor() {
+        this.level = Logger.LEVELS.INFO;
     }
-});
 
-function init() {
-    try {
-        // Add settings HTML
-        const settingsHtml = `
-            <div class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>Prompt Hierarchy</b>
-                    <div class="inline-drawer-icon fa-solid interactable down fa-circle-chevron-down"></div>
-                </div>
-                <div class="inline-drawer-content">
-                    <div class="flex-container">
-                        <label>
-                            <input id="prompt_hierarchy_enabled" type="checkbox">
-                            <span>Enable Prompt Hierarchy</span>
-                        </label>
-                    </div>
-                    <div class="flex-container">
-                        <label>
-                            <input id="prompt_hierarchy_autocollapse" type="checkbox">
-                            <span>Auto-collapse nested prompts</span>
-                        </label>
-                    </div>
-                    <div class="flex-container flexFlowColumn">
-                        <label for="prompt_hierarchy_nesting">Nesting Behavior</label>
-                        <select class="text_pole" id="prompt_hierarchy_nesting">
-                            <option value="drag">Drag to nest</option>
-                            <option value="indent">Indent to nest</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        `;
+    info(...args) { console.info(Logger.PREFIX, ...args); }
+    debug(...args) { console.debug(Logger.PREFIX, ...args); }
+    warn(...args) { console.warn(Logger.PREFIX, ...args); }
+    error(...args) { console.error(Logger.PREFIX, ...args); }
+}
 
-        $('#extensions_settings').append(settingsHtml);
-        loadSettings();
-        setupEventListeners();
-        setupPromptManager();
-        console.log(`[${MODULE_NAME}] Extension initialized.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during init:`, error);
+const logger = new Logger();
+
+// Event System
+class EventEmitter {
+    constructor() {
+        this.events = new Map();
+    }
+
+    on(event, callback) {
+        if (!this.events.has(event)) {
+            this.events.set(event, new Set());
+        }
+        this.events.get(event).add(callback);
+    }
+
+    emit(event, data) {
+        const callbacks = this.events.get(event);
+        if (callbacks) {
+            callbacks.forEach(callback => callback(data));
+        }
     }
 }
 
-function loadSettings() {
-    try {
-        // Initialize settings
-        window.extension_settings = window.extension_settings || {};
-        window.extension_settings[MODULE_NAME] = window.extension_settings[MODULE_NAME] || Object.assign({}, defaultSettings);
+const hierarchyEvents = new EventEmitter();
 
-        // Set initial values
-        $('#prompt_hierarchy_enabled').prop('checked', window.extension_settings[MODULE_NAME].enabled);
-        $('#prompt_hierarchy_autocollapse').prop('checked', window.extension_settings[MODULE_NAME].autoCollapse);
-        $('#prompt_hierarchy_nesting').val(window.extension_settings[MODULE_NAME].nestingBehavior);
-        console.log(`[${MODULE_NAME}] Settings loaded.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during loadSettings:`, error);
+// DOM Manager
+class DomManager {
+    static getPromptElement(promptId) {
+        return document.querySelector(`[data-pm-identifier="${promptId}"]`);
     }
-}
 
-function setupEventListeners() {
-    try {
-        // Settings change listeners
-        $('#prompt_hierarchy_enabled').on('change', function() {
-            window.extension_settings[MODULE_NAME].enabled = $(this).prop('checked');
-            if (window.extension_settings[MODULE_NAME].enabled) {
-                onEnable();
-            } else {
-                onDisable();
-            }
-            saveSettingsDebounced();
-        });
-
-        $('#prompt_hierarchy_autocollapse').on('change', function() {
-            window.extension_settings[MODULE_NAME].autoCollapse = $(this).prop('checked');
-            saveSettingsDebounced();
-        });
-
-        $('#prompt_hierarchy_nesting').on('change', function() {
-            window.extension_settings[MODULE_NAME].nestingBehavior = $(this).val();
-            saveSettingsDebounced();
-        });
-
-        // Event handler for settings updates
-        eventSource.on(event_types.SETTINGS_UPDATED, (settings) => {
-            if (settings.key === MODULE_NAME) {
-                const container = document.getElementById('prompt_manager_list');
-                if (container) {
-                    if (settings.value.enabled) {
-                        onEnable();
-                    } else {
-                        onDisable();
-                    }
-                }
-            }
-        });
-
-        // Event handler for settings ready
-        eventSource.on(event_types.SETTINGS_READY, () => {
-            settingsReady = true;
-            console.log(`[${MODULE_NAME}] Settings are ready.`);
-        });
-        console.log(`[${MODULE_NAME}] Event listeners set up.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during setupEventListeners:`, error);
+    static createGroupContainer(groupId) {
+        const container = document.createElement('div');
+        container.className = 'prompt-hierarchy-group';
+        container.dataset.groupId = groupId;
+        return container;
     }
-}
 
-function setupPromptManager() {
-    try {
-        eventSource.on(event_types.PROMPT_MANAGER_READY, () => {
-            const container = document.getElementById('prompt_manager_list');
-            if (!container) return;
-
-            if (window.extension_settings[MODULE_NAME].enabled) {
-                initializeSortable(container);
-                addHandlesToPrompts();
-            }
-        });
-        console.log(`[${MODULE_NAME}] Prompt manager set up.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during setupPromptManager:`, error);
+    static updateNestingVisuals(element, depth) {
+        element.style.setProperty('--nesting-depth', depth);
+        element.classList.toggle('prompt-slave', depth > 0);
     }
-}
 
-function initializeSortable(container) {
-    try {
-        new Sortable(container, {
-            group: 'prompts',
-            animation: 150,
-            handle: '.prompt-handle',
-            ghostClass: 'prompt-ghost',
-            dragClass: 'prompt-drag',
-            onEnd: () => {
-                updateHierarchy();
-                if (typeof countTokensDebounced === 'function') {
-                    countTokensDebounced();
-                }
-            }
-        });
-        console.log(`[${MODULE_NAME}] Sortable initialized.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during initializeSortable:`, error);
-    }
-}
-
-function addHandlesToPrompts() {
-    try {
-        $('.prompt_entry').each(function() {
-            if (!$(this).find('.prompt-handle').length) {
-                $(this).prepend('<div class="prompt-handle">☰</div>');
-            }
-        });
-        console.log(`[${MODULE_NAME}] Handles added to prompts.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during addHandlesToPrompts:`, error);
-    }
-}
-
-function updateHierarchy() {
-    try {
-        const container = document.getElementById('prompt_manager_list');
-        if (!container) return;
-
-        const hierarchy = Array.from(container.children).map(el => ({
-            id: el.dataset.id,
-            enabled: el.querySelector('input[type="checkbox"]')?.checked ?? true,
-            children: []
-        }));
-
-        window.extension_settings[MODULE_NAME].promptHierarchy = hierarchy;
-        saveSettingsDebounced();
-        console.log(`[${MODULE_NAME}] Hierarchy updated.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during updateHierarchy:`, error);
-    }
-}
-
-function onEnable() {
-    try {
-        const container = document.getElementById('prompt_manager_list');
+    static updateMovingUI() {
+        const promptList = document.getElementById('completion_prompt_manager_list');
+        if (!promptList) return;
+        const container = promptList.closest('.draggable');
         if (container) {
-            addHandlesToPrompts();
-            initializeSortable(container);
+            document.querySelectorAll('.prompt-hierarchy-group').forEach(group => {
+                group.style.width = `${container.offsetWidth - 40}px`;
+            });
         }
-        console.log(`[${MODULE_NAME}] Extension enabled.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during onEnable:`, error);
     }
 }
 
-function onDisable() {
-    try {
-        const container = document.getElementById('prompt_manager_list');
-        $('.prompt-handle').remove();
-        if (container?.sortable) {
-            container.sortable.destroy();
+// Hierarchy Management
+class PromptHierarchy {
+    constructor() {
+        this.groups = new Map();
+        this.storage = new HierarchyStorage();
+        this.tokenManager = new TokenManager();
+    }
+
+    createGroup(masterId) {
+        const group = {
+            id: masterId,
+            slaves: new Set(),
+            collapsed: false,
+            depth: 0
+        };
+        
+        this.groups.set(masterId, group);
+        hierarchyEvents.emit('groupCreated', { groupId: masterId });
+        return group;
+    }
+
+    addToGroup(masterId, slaveId) {
+        let group = this.groups.get(masterId) || this.createGroup(masterId);
+        this.removeFromGroup(slaveId);
+        group.slaves.add(slaveId);
+        this.calculateDepths();
+        hierarchyEvents.emit('promptGrouped', { groupId: masterId, promptId: slaveId });
+    }
+
+    removeFromGroup(promptId) {
+        for (const [groupId, group] of this.groups) {
+            if (group.slaves.has(promptId)) {
+                group.slaves.delete(promptId);
+                if (group.slaves.size === 0) {
+                    this.groups.delete(groupId);
+                }
+                return;
+            }
         }
-        console.log(`[${MODULE_NAME}] Extension disabled.`);
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Error during onDisable:`, error);
+    }
+
+    calculateDepths() {
+        for (const group of this.groups.values()) {
+            group.depth = this.getGroupDepth(group.id);
+        }
+    }
+
+    getGroupDepth(promptId, visited = new Set()) {
+        if (visited.has(promptId)) return 0;
+        visited.add(promptId);
+        const parentGroup = Array.from(this.groups.values())
+            .find(g => g.slaves.has(promptId));
+        return parentGroup ? 1 + this.getGroupDepth(parentGroup.id, visited) : 0;
     }
 }
 
-function saveSettingsDebounced() {
-    if (!settingsReady) {
-        console.warn(`[${MODULE_NAME}] Settings not ready, aborting save.`);
-        return;
+// Storage Management
+class HierarchyStorage {
+    constructor() {
+        this.storageKey = MODULE_NAME;
     }
-    
-    console.log(`[${MODULE_NAME}] Saving settings.`);
-    
-    // Use a debounced save function if available, otherwise save directly
-    if (typeof saveExtensionSettingsDebounced === 'function') {
-        saveExtensionSettingsDebounced(MODULE_NAME);
-    } else {
-        saveExtensionSettings(MODULE_NAME);
+
+    saveState(state) {
+        extension_settings[this.storageKey] = state;
+        saveSettingsDebounced();
+    }
+
+    loadState() {
+        return extension_settings[this.storageKey] || { groups: [] };
     }
 }
+
+// Token Management
+class TokenManager {
+    constructor() {
+        this.groupTokens = new Map();
+    }
+
+    calculateGroupTokens(groupId, slaves) {
+        let total = this.getPromptTokens(groupId);
+        for (const slaveId of slaves) {
+            total += this.getPromptTokens(slaveId);
+        }
+        this.groupTokens.set(groupId, total);
+        return total;
+    }
+
+    getPromptTokens(promptId) {
+        const element = DomManager.getPromptElement(promptId);
+        return element ? parseInt(element.dataset.pmTokens) || 0 : 0;
+    }
+}
+
+function initializePromptHierarchy() {
+    const promptList = $('#completion_prompt_manager_list');
+    
+    // Add hierarchy container
+    promptList.addClass('hierarchy-enabled');
+    
+    // Setup drag and drop
+    $('.completion_prompt_manager_prompt_draggable').each((i, prompt) => {
+        $(prompt).on('dragstart', (e) => {
+            e.originalEvent.dataTransfer.setData('text/plain', 
+                $(prompt).data('pm-identifier'));
+        });
+        
+        $(prompt).on('dragover', (e) => {
+            e.preventDefault();
+            const target = $(e.currentTarget);
+            target.addClass('hierarchy-drop-target');
+        });
+        
+        $(prompt).on('drop', (e) => {
+            e.preventDefault();
+            const sourceId = e.originalEvent.dataTransfer.getData('text/plain');
+            const targetId = $(e.currentTarget).data('pm-identifier');
+            
+            if (sourceId !== targetId) {
+                createPromptGroup(sourceId, targetId);
+            }
+        });
+    });
+}
+
+function createPromptGroup(sourceId, targetId) {
+    const source = $(`[data-pm-identifier="${sourceId}"]`);
+    const target = $(`[data-pm-identifier="${targetId}"]`);
+    
+    // Create group wrapper
+    const groupWrapper = $('<div/>', {
+        class: 'prompt-hierarchy-group',
+        'data-group-id': targetId
+    });
+    
+    // Move source under target
+    target.wrap(groupWrapper);
+    source.insertAfter(target).addClass('prompt-slave');
+}
+
+function initializeHierarchyEvents() {
+    // Double-click to toggle group
+    $('#completion_prompt_manager_list').on('dblclick', '.completion_prompt_manager_prompt', function(e) {
+        if ($(e.target).closest('.prompt_manager_prompt_controls').length) return;
+        
+        const group = $(this).closest('.prompt-hierarchy-group');
+        if (group.length) {
+            group.toggleClass('collapsed');
+            updateTokenDisplay(group);
+        }
+    });
+
+    // Collapse/Expand All buttons
+    $('#collapse_all').on('click', () => {
+        $('.prompt-hierarchy-group').addClass('collapsed');
+        updateAllTokenDisplays();
+    });
+
+    $('#expand_all').on('click', () => {
+        $('.prompt-hierarchy-group').removeClass('collapsed');
+        updateAllTokenDisplays();
+    });
+
+    // Settings changes
+    $('#hierarchy_enabled').on('change', function() {
+        $('#completion_prompt_manager_list').toggleClass('hierarchy-enabled', this.checked);
+    });
+
+    $('#indent_size').on('input', function() {
+        const size = $(this).val();
+        document.documentElement.style.setProperty('--hierarchy-indent', `${size}px`);
+    });
+
+    // Update token displays when prompts change
+    const observer = new MutationObserver(() => {
+        updateAllTokenDisplays();
+    });
+
+    observer.observe(document.getElementById('completion_prompt_manager_list'), {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-pm-tokens']
+    });
+}
+
+// Initialize Extension
+jQuery(async () => {
+    if (!window.extension_settings) {
+        window.extension_settings = {};
+    }
+    window.extension_settings[MODULE_NAME] = {};
+    
+    const hierarchy = new PromptHierarchy();
+    
+    // Initialize event listeners
+    hierarchyEvents.on('groupCreated', ({ groupId }) => {
+        const container = DomManager.createGroupContainer(groupId);
+        const promptElement = DomManager.getPromptElement(groupId);
+        if (promptElement) {
+            promptElement.parentNode.insertBefore(container, promptElement);
+        }
+    });
+
+    // Handle moving UI updates
+    document.addEventListener('mousemove', DomManager.updateMovingUI);
+    
+    logger.info('Prompt Hierarchy initialized');
+});
