@@ -1,13 +1,23 @@
 {
-    "display_name": "Prompt Hierarchy 2",
+    "display_name": "Prompt Hierarchy 3",
     "loading_order": 12,
     "requires": [],
     "optional": [],
-    "js": "index.js",
-    "css": "styles/main.css", "styles/animations.css", "styles/themes/hierarchy.css", "styles/themes/main.css",
+    "js": [
+        "loader.js",
+        "index.js",
+        "prompt-hierachy.js"
+    ],
+    "css": [
+        "styles/main.css",
+        "styles/animations.css",
+        "styles/themes/hierarchy.css",
+        "styles/themes/modern.css",
+        "styles/themes/win98.css"
+    ],
     "author": "beermanpartytime",
     "version": "1.0.0",
-    "homePage": "https://github.com/beermanpartytime/prompt-hierarchy-2",
+    "homePage": "https://github.com/beermanpartytime/prompt-hierarchy-3",
     "extension": {
         "menu": true,
         "settings": true,
