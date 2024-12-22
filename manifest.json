@@ -6,7 +6,6 @@
     "js": [
         "loader.js",
         "index.js",
-        "prompt-hierachy.js"
     ],
     "css": [
         "styles/main.css",
