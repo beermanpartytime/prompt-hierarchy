@@ -49,3 +49,45 @@
 .prompt-hierarchy-group .completion_prompt_manager_prompt {
     transition: all 0.2s ease-out;
 }
+
+/* Improve group visibility */
+.prompt-hierarchy-group {
+    position: relative;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+/* Add collapse/expand indicator */
+.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child::after {
+    content: '▼';
+    position: absolute;
+    left: -15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    color: var(--SmartThemeAccentColor);
+    transition: transform 0.2s ease;
+}
+
+.prompt-hierarchy-group.collapsed > .completion_prompt_manager_prompt:first-child::after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+/* Improve drop target visibility */
+.hierarchy-drop-target {
+    outline: 2px dashed var(--SmartThemeAccentColor) !important;
+    outline-offset: -2px;
+    background: var(--SmartThemeBodyColor20) !important;
+}
+
+/* Prevent text selection during drag */
+.dragging {
+    user-select: none;
+}
+
+/* Group token counter */
+.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child .prompt_manager_prompt_tokens::before {
+    content: '∑';
+    margin-right: 4px;
+    opacity: 0.7;
+}
