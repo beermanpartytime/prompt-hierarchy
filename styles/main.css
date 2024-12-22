@@ -1,0 +1,51 @@
+/* Hierarchy Base */
+.hierarchy-enabled {
+    position: relative;
+}
+
+.prompt-hierarchy-group {
+    border-left: 2px solid var(--SmartThemeAccentColor);
+    margin-left: 10px;
+    padding-left: 10px;
+}
+
+/* Nested Prompts */
+.prompt-slave {
+    margin-left: 20px !important;
+    position: relative;
+}
+
+.prompt-slave::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 50%;
+    width: 15px;
+    height: 2px;
+    background: var(--SmartThemeAccentColor);
+}
+
+/* Drag & Drop Visuals */
+.hierarchy-drop-target {
+    border: 2px dashed var(--SmartThemeAccentColor) !important;
+    background: var(--SmartThemeBodyColor20) !important;
+}
+
+/* Group Controls */
+.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child {
+    border-left: 3px solid var(--SmartThemeAccentColor);
+}
+
+.prompt-hierarchy-group.collapsed .prompt-slave {
+    display: none;
+}
+
+/* Token Display */
+.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child .prompt_manager_prompt_tokens {
+    font-weight: bold;
+}
+
+/* Animations */
+.prompt-hierarchy-group .completion_prompt_manager_prompt {
+    transition: all 0.2s ease-out;
+}

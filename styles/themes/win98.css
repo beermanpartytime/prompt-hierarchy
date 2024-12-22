@@ -1,0 +1,21 @@
+.theme-win98 {
+    --group-bg: #c0c0c0;
+    --item-border: #808080;
+    --nest-line: #a0a0a0;
+    --token-bg: #ffffff;
+    --drop-target-bg-start: #000080;
+    --drop-target-bg-end: #0000a0;
+    
+    font-family: "Microsoft Sans Serif", Tahoma, sans-serif;
+}
+
+.theme-win98 .prompt-group {
+    border: 2px solid;
+    border-color: #dfdfdf #808080 #808080 #dfdfdf;
+}
+
+.theme-win98 .group-header {
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: white;
+    font-weight: bold;
+}

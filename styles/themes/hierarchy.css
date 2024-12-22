@@ -1,0 +1,24 @@
+.prompt-slave {
+    margin-left: var(--indent-width);
+    transform: scale(0.95);
+    transform-origin: left;
+}
+
+.prompt-connector {
+    position: absolute;
+    left: -10px;
+    height: 100%;
+    width: 10px;
+    border-left: 2px solid var(--connector-color);
+    border-bottom: 2px solid var(--connector-color);
+}
+
+.prompt-master {
+    border-left: 3px solid var(--master-color);
+}
+
+/* Preserve ST's original button styling */
+.prompt-slave .prompt_edit,
+.prompt-slave .prompt_delete {
+    transform: scale(1.05); /* Counter the parent scaling */
+}

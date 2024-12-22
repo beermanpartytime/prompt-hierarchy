@@ -1,0 +1,46 @@
+@keyframes groupExpand {
+    from {
+        max-height: 0;
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        max-height: 1000px;
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes groupCollapse {
+    from {
+        max-height: 1000px;
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        max-height: 0;
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+}
+
+.prompt-hierarchy-group .prompt-slave {
+    animation: groupExpand 0.3s ease-out forwards;
+}
+
+.prompt-hierarchy-group.collapsed .prompt-slave {
+    animation: groupCollapse 0.3s ease-out forwards;
+}
+
+.hierarchy-drop-target {
+    animation: dropHighlight 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes dropHighlight {
+    from {
+        border-color: var(--SmartThemeAccentColor);
+    }
+    to {
+        border-color: var(--SmartThemeBodyColor);
+    }
+}
