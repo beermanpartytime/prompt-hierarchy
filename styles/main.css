@@ -1,93 +1,55 @@
-/* Hierarchy Base */
-.hierarchy-enabled {
+/* Override ST's default styles */
+#completion_prompt_manager_list.hierarchy-enabled {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
 }
 
-.prompt-hierarchy-group {
-    border-left: 2px solid var(--SmartThemeAccentColor);
-    margin-left: 10px;
-    padding-left: 10px;
-}
-
-/* Nested Prompts */
-.prompt-slave {
-    margin-left: 20px !important;
+#completion_prompt_manager_list.hierarchy-enabled .completion_prompt_manager_prompt {
     position: relative;
+    margin-left: var(--nesting-depth, 0px);
+    transition: margin-left 0.3s ease;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
 }
 
-.prompt-slave::before {
-    content: '';
+/* Ensure our controls don't conflict with ST's */
+.prompt-controls {
     position: absolute;
-    left: -20px;
-    top: 50%;
-    width: 15px;
-    height: 2px;
-    background: var(--SmartThemeAccentColor);
-}
-
-/* Drag & Drop Visuals */
-.hierarchy-drop-target {
-    border: 2px dashed var(--SmartThemeAccentColor) !important;
-    background: var(--SmartThemeBodyColor20) !important;
-}
-
-/* Group Controls */
-.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child {
-    border-left: 3px solid var(--SmartThemeAccentColor);
-}
-
-.prompt-hierarchy-group.collapsed .prompt-slave {
-    display: none;
-}
-
-/* Token Display */
-.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child .prompt_manager_prompt_tokens {
-    font-weight: bold;
-}
-
-/* Animations */
-.prompt-hierarchy-group .completion_prompt_manager_prompt {
-    transition: all 0.2s ease-out;
-}
-
-/* Improve group visibility */
-.prompt-hierarchy-group {
-    position: relative;
-    margin-top: 5px;
-    margin-bottom: 5px;
-}
-
-/* Add collapse/expand indicator */
-.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child::after {
-    content: '▼';
-    position: absolute;
-    left: -15px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.8em;
-    color: var(--SmartThemeAccentColor);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+/* Override ST's drag handle */
+.prompt-handle {
+    cursor: move;
+    padding: 4px;
+    color: var(--text-color-secondary);
+}
+
+/* Fix collapse animation */
+.prompt-collapse-toggle {
     transition: transform 0.2s ease;
+    transform-origin: center;
 }
 
-.prompt-hierarchy-group.collapsed > .completion_prompt_manager_prompt:first-child::after {
-    transform: translateY(-50%) rotate(-90deg);
+.collapsed .prompt-collapse-toggle {
+    transform: rotate(-90deg);
 }
 
-/* Improve drop target visibility */
-.hierarchy-drop-target {
-    outline: 2px dashed var(--SmartThemeAccentColor) !important;
-    outline-offset: -2px;
-    background: var(--SmartThemeBodyColor20) !important;
+/* Fix drag and drop visual feedback */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--hover-color) !important;
 }
 
-/* Prevent text selection during drag */
-.dragging {
-    user-select: none;
-}
-
-/* Group token counter */
-.prompt-hierarchy-group > .completion_prompt_manager_prompt:first-child .prompt_manager_prompt_tokens::before {
-    content: '∑';
-    margin-right: 4px;
-    opacity: 0.7;
+.sortable-chosen {
+    background: var(--selected-color);
 }
