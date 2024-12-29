@@ -1,8 +1,0 @@
-.theme-modern {
-    --group-bg: rgba(var(--SmartThemeBodyColorRgb), 0.05);
-    --item-border: var(--SmartThemeBorderColor);
-    --nest-line: var(--SmartThemeAccentColor);
-    --token-bg: rgba(var(--SmartThemeBodyColorRgb), 0.1);
-    --drop-target-bg-start: rgba(var(--SmartThemeAccentColorRgb), 0.3);
-    --drop-target-bg-end: rgba(var(--SmartThemeAccentColorRgb), 0.5);
-}
