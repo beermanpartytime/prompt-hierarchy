@@ -2,17 +2,18 @@
 
 import { Logger } from './logger.js';
 import { debounce, sanitizeForSelector } from './utilities.js';
-import { getContext } from "../../../extensions.js";
+import { getContext } from '../../../../scripts/extensions.js';
+import Sortable from '../../../../lib/Sortable.esm.js';
 
 const context = getContext();
-context.chat; // Chat log
-context.characters; // Character list
-context.groups; // Group list
+const chat = context.chat; // Chat log
+const characters = context.characters; // Character list
+const groups = context.groups; // Group list
 
 class DOMManager {
     /**
      * Creates a new DOMManager instance.
-     * @param {PromptHierarchyExtension} extension - The main extension instance.
+     * @param  {Object} extension - The main extension instance.
      */
     constructor(extension) {
         this.extension = extension;
@@ -20,25 +21,73 @@ class DOMManager {
         this.observer = null;
         this.sortableInstance = null;
 
-        this.saveSettingsDebounced = debounce(() => {
-            this.extension.saveSettings();
-        }, 2000);
+        this.logger.debug('DOMManager constructed');
+
+        // Add error handling states
+        this.errorState = {
+            containerNotFound: false,
+            sortableInitFailed: false
+        };
+
+        // Add state management
+        this.state = {
+            initialized: false,
+            uiReady: false
+        };
+
+        // Add UI update queue
+        this.updateQueue = [];
+        this.processUpdateQueue = debounce(this._processUpdateQueue.bind(this), 100);
+    }
+
+    async init() {
+        try {
+            await this.createSettingsUI();
+            await this.setupObserver(); 
+            
+            // Listen for hierarchy events
+            this.extension.eventEmitter.on('hierarchyUpdated', () => {
+                this.refreshUI();
+            });
+
+            // Set up event listeners
+            this.extension.eventEmitter.on('hierarchyUpdated', () => this.refreshUI());
+            this.extension.eventEmitter.on('promptAdded', (promptId) => this.handlePromptAdded(promptId));
+            this.extension.eventEmitter.on('promptRemoved', (promptId) => this.handlePromptRemoved(promptId));
+
+            // Add ST core event listeners
+            eventSource.on(event_types.CHAT_CHANGED, () => this.refreshUI());
+            eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => this.refreshUI());
+
+            this.state.initialized = true;
+            this.state.uiReady = true;
+        } catch (error) {
+            this.logger.error('DOMManager initialization failed:', error);
+            throw error;
+        }
     }
 
     /**
      * Creates the settings UI in the extensions panel.
      */
     async createSettingsUI() {
-        const container = document.getElementById('extensions_settings');
+        // Wait for settings container
+        const container = await this.waitForElement('#extension_settings', 10000);
         if (!container) {
-            this.logger.error('Extensions settings container not found');
-            return;
+            throw new Error('Extensions settings container not found');
+        }
+
+        // Remove any existing settings for this extension
+        const existingSettings = container.querySelector(`#${this.extension.sanitizedModuleName}_settings`);
+        if (existingSettings) {
+            existingSettings.remove();
         }
 
         const extensionDiv = document.createElement('div');
         extensionDiv.id = `${this.extension.sanitizedModuleName}_settings`;
         extensionDiv.classList.add('extension_settings');
 
+        // Your existing settings HTML...
         const settingsHTML = `
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
@@ -51,33 +100,7 @@ class DOMManager {
                             <input type="checkbox" id="${this.extension.MODULE_NAME}_enabled" ${this.extension.settings.enabled ? 'checked' : ''}>
                             <span>Enable Prompt Hierarchy</span>
                         </label>
-
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="${this.extension.MODULE_NAME}_autoCollapse" ${this.extension.settings.autoCollapse ? 'checked' : ''}>
-                            <span>Auto Collapse Groups</span>
-                        </label>
-
-                        <div class="prompt-hierarchy-setting-row">
-                            <label for="${this.extension.MODULE_NAME}_indentSize">Indent Size</label>
-                            <input type="number" id="${this.extension.MODULE_NAME}_indentSize"
-                                   value="${this.extension.settings.indentSize}" min="0" max="100">
-                        </div>
-
-                        <div class="prompt-hierarchy-setting-row">
-                            <label for="${this.extension.MODULE_NAME}_maxNestingLevel">Max Nesting Level</label>
-                            <input type="number" id="${this.extension.MODULE_NAME}_maxNestingLevel"
-                                   value="${this.extension.settings.maxNestingLevel}" min="1" max="10">
-                        </div>
-
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="${this.extension.MODULE_NAME}_animations" ${this.extension.settings.animations ? 'checked' : ''}>
-                            <span>Enable Animations</span>
-                        </label>
-
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="${this.extension.MODULE_NAME}_showCollapseButtons" ${this.extension.settings.showCollapseButtons ? 'checked' : ''}>
-                            <span>Show Collapse Buttons</span>
-                        </label>
+                        // ...other settings...
                     </div>
                 </div>
             </div>
@@ -86,7 +109,7 @@ class DOMManager {
         extensionDiv.innerHTML = settingsHTML;
         container.appendChild(extensionDiv);
 
-        // Setup the listeners through the extension
+        // Setup listeners after adding to DOM
         this.extension.setupSettingsListeners();
     }
 
@@ -95,9 +118,11 @@ class DOMManager {
      */
     async disableSillyTavernDragDrop() {
         const container = await this.waitForElement('#completion_prompt_manager_list');
-        if (container.length) {
+        if (container) {
             try {
-                container.sortable('destroy');
+                if (this.sortableInstance) {
+                    this.sortableInstance.destroy();
+                }
                 this.logger.info('SillyTavern\'s default drag and drop disabled.');
             } catch (error) {
                 this.logger.error('Failed to disable SillyTavern\'s drag and drop:', error);
@@ -204,7 +229,7 @@ class DOMManager {
      * @param {HTMLElement} promptElement - The prompt element to add controls to.
      */
     addPromptControls(promptElement) {
-        this.logger.debug("DOMManager - addPromptControls, 'this.extension.hierarchyManager' is:", this.extension.hierarchyManager);
+        this.logger.debug('DOMManager - addPromptControls, \'this.extension.hierarchyManager\' is:', this.extension.hierarchyManager);
         if (!promptElement || promptElement.querySelector('.prompt-controls')) {
             return; // Controls already added or invalid element
         }
@@ -223,6 +248,10 @@ class DOMManager {
             collapseToggle.className = 'fas fa-chevron-down prompt-collapse-toggle';
             collapseToggle.addEventListener('click', () => {
                 const promptId = this.extension.hierarchyManager.getPromptId(promptElement);
+                if (!promptId) {
+                    this.logger.warn('Prompt element missing ID, generating one');
+                    promptElement.dataset.promptId = crypto.randomUUID();
+                }
                 if (promptId) {
                     this.extension.hierarchyManager.togglePromptCollapse(promptId);
                 }
@@ -262,6 +291,15 @@ class DOMManager {
                     toggleButton.innerHTML = `<span class="fa-stack prompt-manager-toggle-action"><i class="fa-solid fa-toggle-${promptConfig.enabled ? 'on' : 'off'} fa-stack-1x"></i></span>`;
                 });
                 controls.appendChild(toggleButton);
+            }
+        }
+
+        // Ensure the prompt element has the correct data attribute
+        if (promptElement && !promptElement.dataset.pmIdentifier) {
+            const promptId = promptElement.dataset.promptId ||
+                            promptElement.id;
+            if (promptId) {
+                promptElement.dataset.pmIdentifier = promptId;
             }
         }
 
@@ -311,55 +349,66 @@ class DOMManager {
      *   @param {HTMLElement} container - The prompt list container.
      */
     async initializeSortable(container) {
-        // Ensure container exists
         if (!container) {
-            this.logger.error('Prompt list container not found.');
-            return;
+            this.errorState.containerNotFound = true;
+            throw new Error('Container not found');
         }
 
-        // Destroy any existing Sortable instance
-        if (this.sortableInstance) {
-            this.sortableInstance.destroy();
-            this.sortableInstance = null;
-            this.logger.info('Existing sortable instance destroyed.');
+        try {
+            // Ensure container exists
+            if (!container) {
+                this.logger.error('Prompt list container not found.');
+                return;
+            }
+
+            // Destroy any existing Sortable instance
+            if (this.sortableInstance) {
+                this.sortableInstance.destroy();
+                this.sortableInstance = null;
+                this.logger.info('Existing sortable instance destroyed.');
+            }
+
+            // Disable SillyTavern's default drag-and-drop
+            await this.disableSillyTavernDragDrop();
+
+            // Initialize SortableJS
+            this.sortableInstance = new Sortable(container, {
+                group: 'prompts',
+                animation: this.extension.settings.animations ? 150 : 0,
+                handle: '.prompt-handle', // Use the handle for dragging
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                chosenClass: 'sortable-chosen',
+                delay: 30, // Prevent accidental drags
+                onUpdate: (evt) => {
+                    // Get the updated order of prompt IDs
+                    const promptOrder = this.sortableInstance.toArray();
+
+                    // Get the active character ID using SillyTavern's context
+                    const context = window.SillyTavern.getContext();
+                    const activeCharacterId = context.characterId; // Or however you get it from the context
+
+                    // Call hierarchyManager.updateHierarchy() to update the hierarchy internally
+                    this.extension.hierarchyManager.updateHierarchy(
+                        activeCharacterId,
+                        promptOrder,
+                        evt.oldIndex,
+                        evt.newIndex,
+                    );
+
+                    // Call hierarchyManager.renderPromptHierarchy() to update the prompt display
+                    this.extension.hierarchyManager.renderPromptHierarchy();
+
+                    // Debounced save settings
+                    this.extension.saveSettingsDebounced();
+                },
+            });
+            this.logger.info('Sortable initialized.');
+        } catch (error) {
+            this.errorState.sortableInitFailed = true;
+            this.logger.error('Sortable initialization failed:', error);
+            throw error;
         }
-
-        // Disable SillyTavern's default drag-and-drop
-        await this.disableSillyTavernDragDrop();
-
-        // Initialize SortableJS
-        this.sortableInstance = new Sortable(container, {
-            group: 'prompts',
-            animation: this.extension.settings.animations ? 150 : 0,
-            handle: '.prompt-handle', // Use the handle for dragging
-            ghostClass: 'sortable-ghost',
-            dragClass: 'sortable-drag',
-            chosenClass: 'sortable-chosen',
-            delay: 30, // Prevent accidental drags
-            onUpdate: (evt) => {
-                // Get the updated order of prompt IDs
-                const promptOrder = this.sortableInstance.toArray();
-
-                // Get the active character ID using SillyTavern's context
-                const context = window.SillyTavern.getContext();
-                const activeCharacterId = context.characterId; // Or however you get it from the context
-
-                // Call hierarchyManager.updateHierarchy() to update the hierarchy internally
-                this.extension.hierarchyManager.updateHierarchy(
-                    activeCharacterId,
-                    promptOrder,
-                    evt.oldIndex,
-                    evt.newIndex
-                );
-
-                // Call hierarchyManager.renderPromptHierarchy() to update the prompt display
-                this.extension.hierarchyManager.renderPromptHierarchy();
-
-                // Debounced save settings
-                this.extension.saveSettingsDebounced();
-            },
-        });
-        this.logger.info('Sortable initialized.');
     }
 
     /**
@@ -368,30 +417,30 @@ class DOMManager {
      * @param {number} [timeout=10000] - The maximum time to wait in milliseconds.
      * @returns {Promise<HTMLElement|null>} The element if found, null otherwise.
      */
-    async waitForElement(selector) {
+    async waitForElement(selector, timeout = 10000) {
         return new Promise((resolve) => {
             if (document.querySelector(selector)) {
                 return resolve(document.querySelector(selector));
             }    const observer = new MutationObserver(() => {
-            if (document.querySelector(selector)) {
-                resolve(document.querySelector(selector));
-                observer.disconnect();
+                if (document.querySelector(selector)) {
+                    resolve(document.querySelector(selector));
+                    observer.disconnect();
+                }
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            // Timeout in case the element is never found
+            if (timeout) {
+                setTimeout(() => {
+                    observer.disconnect();
+                    resolve(null); // Element wasn't found within the timeout
+                }, timeout);
             }
         });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        // Timeout in case the element is never found
-        if (timeout) {
-            setTimeout(() => {
-                observer.disconnect();
-                resolve(null); // Element wasn't found within the timeout
-            }, timeout);
-        }
-    });
     }
 
     /**
@@ -426,10 +475,48 @@ class DOMManager {
 
         this.observer.observe(container, {
             childList: true,
-            subtree: false
+            subtree: false,
         });
 
         this.logger.info('MutationObserver set up.');
+    }
+
+    async refreshUI() {
+        if (!this.state.uiReady) {
+            this.updateQueue.push('refresh');
+            return;
+        }
+
+        try {
+            await this.modifyExistingPrompts(this.container);
+            this.extension.eventEmitter.emit('uiUpdated');
+        } catch (error) {
+            this.logger.error('Failed to refresh UI:', error);
+        }
+    }
+
+    handlePromptAdded(promptId) {
+        const promptElement = this.container.querySelector(`.promptId-${promptId}`);
+        if (promptElement) {
+            this.addPromptControls(promptElement);
+            this.applyPromptStyles(promptElement, promptId);
+        }
+    }
+
+    handlePromptRemoved(promptId) {
+        const promptElement = this.container.querySelector(`.promptId-${promptId}`);
+        if (promptElement) {
+            promptElement.remove();
+        }
+    }
+
+    _processUpdateQueue() {
+        while (this.updateQueue.length > 0) {
+            const update = this.updateQueue.shift();
+            if (update === 'refresh') {
+                this.refreshUI();
+            }
+        }
     }
 
     updateSettingsUI(settings) {
@@ -477,8 +564,49 @@ class DOMManager {
             }
         }
         this.logger.info('Cleaned up DOM.');
+        this.state.initialized = false;
+        this.state.uiReady = false;
+        this.updateQueue = [];
     }
 
+    async setupContainer() {
+        try {
+            // Use consistent ID matching other code
+            let container = document.getElementById('extension_settings');
+            
+            if (!container) {
+                this.logger.debug('Extension settings container not found, creating new one');
+                container = document.createElement('div');
+                container.id = 'extension_settings';
+                
+                // Find parent container - typically the settings panel
+                const parent = document.querySelector('#settings_pane');
+                if (!parent) {
+                    throw new Error('Settings panel not found');
+                }
+                
+                parent.appendChild(container);
+                
+                // Verify container was actually attached
+                if (!document.getElementById('extension_settings')) {
+                    throw new Error('Failed to attach settings container to DOM');
+                }
+                
+                this.logger.info('Created extension settings container');
+            }
+            
+            // Clear any existing content
+            container.innerHTML = '';
+            
+            // Store reference for cleanup
+            this.container = container;
+            
+            return container;
+        } catch (error) {
+            this.logger.error('Failed to setup container:', error);
+            throw error;
+        }
+    }
 }
 
 export { DOMManager };

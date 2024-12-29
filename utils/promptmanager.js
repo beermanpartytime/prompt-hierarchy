@@ -1,12 +1,14 @@
 // PromptManager.js
 
-class PromptListManager {
+export class PromptListManager {
     constructor(extension) {
         this.extension = extension;
         this.container = null; // Will be set in init()
     }
 
     init() {
+        try {
+            this.logger.debug('Initializing...');
         this.container = document.getElementById('completion_prompt_manager_list');
         if (!this.container) {
             this.extension.logger.error('Prompt container not found');
@@ -14,6 +16,14 @@ class PromptListManager {
         }
         this.container.classList.add('hierarchy-enabled');
         this.render();
+        } catch (err) {
+            this.logger.error('Failed to initialize:', err);
+            throw err; 
+        }
+    }
+
+    cleanup() {
+        this.logger.debug('Cleaning up...');
     }
 
     render() {
@@ -24,7 +34,7 @@ class PromptListManager {
         const context = window.SillyTavern.getContext();
         const activeCharacterId = context.characterId;
         const hierarchy = this.extension.settings.promptHierarchy[activeCharacterId] || { root: [] };
-
+        
         // Render the prompts recursively
         hierarchy.root.forEach(promptId => this.renderPrompt(promptId));
     }

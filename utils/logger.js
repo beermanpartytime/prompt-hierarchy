@@ -1,85 +1,86 @@
-// utils/logger.js
-
-class Logger {
-    constructor(moduleName) {
-        this.moduleName = moduleName;
-        this.logLevels = {
-            DEBUG: 1,
-            INFO: 2,
-            WARNING: 3,
-            ERROR: 4,
-        };
-        this.logLevel = this.logLevels.DEBUG; // Set to DEBUG for maximum output during development
+/**
+ * Logger class for consistent logging across the extension
+ * @class
+ */
+export class Logger {
+    /**
+     * Creates a new Logger instance
+     * @param {string} prefix Module prefix for log messages
+     */
+    constructor(prefix) {
+        this.prefix = prefix;
+        this.debugEnabled = true; 
+        this.traceEnabled = true;
+        this.debug('Logger initialized');
     }
 
-    // Check if the environment is a browser
-    isBrowser() {
-        return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+    /**
+     * Format a log message with the prefix
+     * @private
+     * @param {any[]} args Arguments to log
+     * @returns {any[]} Formatted arguments
+     */
+    formatMessage(...args) {
+        return [`[${this.prefix}]`, ...args];
     }
 
-    // Check if the environment is Node.js
-    isNode() {
-        return typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
-    }
-
-    setLogLevel(level) {
-        if (typeof level === 'string') {
-            this.logLevel = this.logLevels[level.toUpperCase()] || this.logLevels.WARNING;
-        } else if (typeof level === 'number') {
-            this.logLevel = level;
-        } else {
-            this.warning(`Invalid log level: ${level}`);
-        }
-    }
-
-    // Internal logging method (used by debug, info, warning, error)
-    _log(level, ...args) {
-        if (this.logLevel <= this.logLevels[level]) {
-            const prefix = `[${level}] [${this.moduleName}]`;
-            if (this.isBrowser()) {
-                // Browser-specific logging with styles
-                const logStyle = 'background: #222; color: #bada55';
-                console.log(`%c${prefix}`, logStyle, ...args);
-            } else if (this.isNode()) {
-                // Node.js-specific logging with ANSI colors
-                const color = {
-                    reset: '\x1b[0m',
-                    DEBUG: '\x1b[34m',  // Blue
-                    INFO: '\x1b[32m',   // Green
-                    WARNING: '\x1b[33m',// Yellow
-                    ERROR: '\x1b[31m',  // Red
-                };
-                console.log(`${color[level]}${prefix}${color.reset}`, ...args);
-            } else {
-                // Fallback for other environments
-                console.log(prefix, ...args);
-            }
-        }
-    }
-
-    // Public logging methods
+    /**
+     * Log debug message
+     * @param {...any} args Arguments to log
+     */
     debug(...args) {
-        this._log('DEBUG', ...args);
+        if (!this.debugEnabled) return;
+        console.debug(...this.formatMessage(...args));
     }
 
+    /**
+     * Log info message
+     * @param {...any} args Arguments to log
+     */
     info(...args) {
-        this._log('INFO', ...args);
+        console.info(...this.formatMessage(...args));
     }
 
-    warn(...args) {
-        this._log('WARNING', ...args);
-    }
-
+    /**
+     * Log error message with stack trace
+     * @param {...any} args Arguments to log
+     */
     error(...args) {
-        this._log('ERROR', ...args);
+        console.error(...this.formatMessage(...args));
+        console.trace();
     }
 
-    // Special trace method (for method entry/exit)
-    trace(methodName, entering = true) {
-        const action = entering ? 'Entering' : 'Exiting';
-        this._log('DEBUG', `${action} ${methodName}`); // Use _log for consistent formatting
+    /**
+     * Log warning message
+     * @param {...any} args Arguments to log
+     */  
+    warn(...args) {
+        console.warn(...this.formatMessage(...args));
+    }
+
+    /**
+     * Log method entry/exit with stack trace
+     * @param {string} method Method name
+     * @param {boolean} [entering=true] Whether entering or exiting
+     */
+    trace(method, entering = true) {
+        if (!this.traceEnabled) return;
+        const action = entering ? 'ENTER' : 'EXIT';
+        console.log(...this.formatMessage(`${action} ${method}`));
+        if (entering) console.trace();
+    }
+
+    /**
+     * Enable debug logging
+     */
+    enableDebug() {
+        this.debugEnabled = true;
+    }
+
+    /**
+     * Disable debug logging
+     */
+    disableDebug() {
+        this.debugEnabled = false;
     }
 }
-
-// Export the Logger class
-export { Logger };

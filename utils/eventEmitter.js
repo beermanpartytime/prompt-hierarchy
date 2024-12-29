@@ -1,8 +1,7 @@
-// utils/eventEmitter.js
-
 class EventEmitter {
     constructor() {
         this.events = {};
+        this.debugEnabled = localStorage.getItem('eventTracing') === 'true';
     }
 
     on(event, listener) {
@@ -10,20 +9,36 @@ class EventEmitter {
             this.events[event] = [];
         }
         this.events[event].push(listener);
-        return () => this.removeListener(event, listener); // Return an unsubscribe function
+        if (this.debugEnabled) {
+            console.debug(`[EventEmitter] Added listener for: ${event}`);
+        }
+        return () => this.removeListener(event, listener);
     }
 
     removeListener(event, listener) {
         if (this.events[event]) {
             this.events[event] = this.events[event].filter(l => l !== listener);
+            if (this.debugEnabled) {
+                console.debug(`[EventEmitter] Removed listener for: ${event}`);
+            }
         }
     }
 
     emit(event, ...args) {
+        if (this.debugEnabled) {
+            console.debug(`[EventEmitter] Emitting: ${event}`, args);
+        }
+
         if (this.events[event]) {
-            // Clone the listeners array to allow unsubscription during event handling
             const listeners = [...this.events[event]];
-            listeners.forEach(listener => listener(...args));
+            listeners.forEach(listener => {
+                try {
+                    listener(...args);
+                } catch (error) {
+                    console.error(`[EventEmitter] Error in listener for ${event}:`, error);
+                    console.trace();
+                }
+            });
         }
     }
 
@@ -33,8 +48,20 @@ class EventEmitter {
             this.removeListener(event, onceListener);
         };
         this.on(event, onceListener);
+        if (this.debugEnabled) {
+            console.debug(`[EventEmitter] Added one-time listener for: ${event}`);
+        }
+    }
+
+    enableDebug() {
+        this.debugEnabled = true;
+        localStorage.setItem('eventTracing', 'true');
+    }
+
+    disableDebug() {
+        this.debugEnabled = false;
+        localStorage.setItem('eventTracing', 'false');
     }
 }
 
-// Export the EventEmitter class
 export { EventEmitter };

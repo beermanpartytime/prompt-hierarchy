@@ -32,7 +32,6 @@ const defaultSettings = {
 /**
  * @description Default placeholder objects for the Prompt Hierarchy extension.
  */
-
 const defaultPlaceholders = {
     examplePrompt1: {
         children: ["examplePrompt4"],
@@ -54,7 +53,7 @@ const defaultPlaceholders = {
         collapsed: false,
         level: 1
     },
-}
+};
 
 /**
  * Loads the settings for the Prompt Hierarchy extension.
@@ -64,9 +63,9 @@ const defaultPlaceholders = {
 const loadSettings = () => {
     let loadedSettings = { ...defaultSettings };
 
-    if (typeof window !== 'undefined' && window.extensions_settings && window.extensions_settings['prompt-hierarchy']) {
+    if (typeof window !== 'undefined' && window.extension_settings && window.extension_settings['prompt-hierarchy']) {
         // Browser environment with saved settings
-        loadedSettings = { ...loadedSettings, ...window.extensions_settings['prompt-hierarchy'] };
+        loadedSettings = { ...loadedSettings, ...window.extension_settings['prompt-hierarchy'] };
     }
 
     return loadedSettings;

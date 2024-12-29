@@ -1,201 +1,239 @@
-// index.js
+// Core imports
+import { saveSettingsDebounced } from '../../../script.js';
+import { MessageCollection } from '../../../scripts/openai.js';
+import { extension_settings, getContext, ModuleWorkerWrapper, modules } from '../../../scripts/extensions.js';
 
+// UI imports
+import { Sortable } from '../../../lib/Sortable.esm.js';
+
+// Local imports 
 import { loadSettings, defaultSettings } from './utils/load.js';
-import { Logger } from './utils/logger.js';
 import { EventEmitter } from './utils/eventEmitter.js';
 import { DOMManager } from './utils/domManager.js';
 import { HierarchyManager } from './utils/hierarchyManager.js';
-import './utils/promptmanager.js';
-import { debounce, sanitizeForSelector } from './utils/utilities.js';
+import { Logger } from './utils/logger.js';
+
+// Constants
+const MODULE_NAME = 'prompt-hierarchy';
+const REQUIRED_MODULES = ['settings', 'extensions'];
+const event_types = {
+    PROMPT_MANAGER_READY: 'PROMPT_MANAGER_READY',
+    UNLOAD: 'UNLOAD'
+};
 
 class PromptHierarchyExtension {
     constructor() {
-        this.MODULE_NAME = 'prompt-hierarchy';
-        this.sanitizedModuleName = sanitizeForSelector(this.MODULE_NAME);
-
-        // 1. Initialize Logger FIRST
-        this.logger = new Logger(this.MODULE_NAME);
-
-        this.eventEmitter = new EventEmitter();
-
-        // Extension settings
-        this.defaultSettings = defaultSettings;
+        // Core setup
+        this.MODULE_NAME = MODULE_NAME;
+        this.logger = new Logger(MODULE_NAME);
         this.settings = loadSettings();
+        
+        // Event system
+        this.events = new EventEmitter();
+        this.events.enableDebug();
 
-        // 2. Bind Methods - Bind *all* methods that use 'this'
+        // State tracking
+        this.state = {
+            initialized: false,
+            enabled: false,
+            error: null,
+            uiPositions: {},
+            promptManager: null
+        };
+
+        // Bind methods
         this.init = this.init.bind(this);
         this.enable = this.enable.bind(this);
         this.disable = this.disable.bind(this);
-        this.getActiveCharacterId = this.getActiveCharacterId.bind(this);
-        this.saveSettings = this.saveSettings.bind(this);
-        this.saveSettingsDebounced = debounce(this.saveSettings, 2000); // Already bound in debounce
-        this.setupSettingsListeners = this.setupSettingsListeners.bind(this);
-        this.cleanup = this.cleanup.bind(this);
+        this.handlePromptManagerInit = this.handlePromptManagerInit.bind(this);
+        this.setupPromptManagerHandlers = this.setupPromptManagerHandlers.bind(this);
+        
+        // Error handling
+        this.events.on('error', this.handleError.bind(this));
 
-        // 3. Core Managers - Pass dependencies
-        this.domManager = new DOMManager(this);
-        this.hierarchyManager = new HierarchyManager(this);
+        this.logger.debug('Extension constructed');
+    }
 
-        this.sortableInstance = null;
-        this.observer = null;
+    handleError(error) {
+        this.state.error = error;
+        this.logger.error('Error:', error);
+    }
+
+    async checkRequiredModules() {
+        this.logger.debug('Checking required modules...');
+        
+        // Keep checking until modules are available or timeout
+        const MAX_RETRIES = 30;
+        let retries = 0;
+        
+        while (retries < MAX_RETRIES) {
+            const missingModules = REQUIRED_MODULES.filter(module => !modules.includes(module));
+            
+            if (missingModules.length === 0) {
+                this.logger.debug('All required modules found');
+                return true;
+            }
+    
+            this.logger.debug(`Missing modules: ${missingModules.join(', ')}. Retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            retries++;
+        }
+    
+        throw new Error(`Required modules not found after ${MAX_RETRIES} seconds: ${REQUIRED_MODULES.join(', ')}`);
     }
 
     async init() {
-        this.logger.debug("PromptHierarchyExtension - init, 'this' is:", this);
-        this.logger.debug("PromptHierarchyExtension - init, 'this.logger' is:", this.logger);
-        this.logger.trace('init', true); // Entering
-  
-        // Wrap the main logic in an arrow function to capture 'this'
-        const initInternal = async () => {
-            try {
-                await this.cleanup();
-                await this.domManager.createSettingsUI();
-                this.initializeSettings();
-  
-                if (this.settings.enabled) {
-                    await this.enable();
-                }
-  
-                this.logger.info('Prompt Hierarchy Extension initialized.');
-            } catch (error) {
-                this.logger.error('Initialization failed:', error);
-            }
-        };
-  
-        await initInternal(); // Call the arrow function
-        this.logger.trace('init', false); // Exiting
-    }
-
-    async enable() {
-        this.logger.trace('enable', true); // Start trace
-    
-        try {
-            const container = await this.domManager.waitForElement('#completion_prompt_manager_list');
-            if (!container) {
-                throw new Error('Prompt list container not found.');
-            }
-    
-            this.domManager.disableSillyTavernDragDrop();
-    
-            // 4. Initialize hierarchyManager - Ensure 'this' is correct here
-            await this.hierarchyManager.initialize();
-            this.domManager.initializeSortable(container);
-            this.domManager.setupObserver();
-    
-            this.logger.info('Prompt Hierarchy enabled.');
-        } catch (error) {
-            this.logger.error('Failed to enable Prompt Hierarchy:', error); // Removed this.logger.getStackTrace()
-            this.cleanup();
-        }
-    this.logger.trace('enable', false); // End trace
-    }
-
-    disable() {
-        this.logger.trace('disable', true); // Entering
+        this.logger.debug('Initialization started');
 
         try {
-            this.domManager.cleanup();
-            this.hierarchyManager.cleanup();
-            this.logger.info('Prompt Hierarchy disabled.');
+            // Check required modules
+            await this.checkRequiredModules();
+
+            // Initialize settings
+            if (!extension_settings[MODULE_NAME]) {
+                extension_settings[MODULE_NAME] = defaultSettings;
+                await saveSettingsDebounced();
+            }
+
+            // Wait for ST core
+            await this.waitForSillyTavernCore();
+
+            // Initialize managers
+            this.domManager = new DOMManager(this);
+            this.hierarchyManager = new HierarchyManager(this);
+
+            await Promise.all([
+                this.domManager.init(),
+                this.hierarchyManager.init()
+            ]);
+
+            // Set up event listeners
+            this.setupEventListeners();
+
+            // Enable extension
+            await this.enable();
+
+            this.state.initialized = true;
+            this.logger.debug('Initialization complete');
+            return true;
+
         } catch (error) {
-            this.logger.error('Failed to disable Prompt Hierarchy:', error);
+            this.logger.error('Initialization failed:', error);
+            this.state.error = error;
+            return false;
         }
-
-        this.logger.trace('disable', false); // Exiting
     }
 
-    initializeSettings() {
-        this.domManager.updateSettingsUI(this.settings);
-        this.setupSettingsListeners();
-    }
+    async waitForSillyTavernCore(timeout = 30000) {
+        this.logger.debug('Waiting for ST core...');
+        
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('ST core timeout'));
+            }, timeout);
 
-    setupSettingsListeners() {
-        const settingsElements = document.querySelectorAll(`[id^="${this.sanitizedModuleName}_"]`);
-        settingsElements.forEach(element => {
-            const settingKey = element.id.replace(`${this.MODULE_NAME}_`, '');
-
-            element.addEventListener('change', (event) => {
-                const value = element.type === 'checkbox' ? event.target.checked : event.target.value;
-                this.settings[settingKey] = value;
-
-                if (settingKey === 'enabled') {
-                    value ? this.enable() : this.disable();
+            const checkCore = () => {
+                if (window.SillyTavern?.getContext?.()) {
+                    clearTimeout(timeoutId);
+                    this.logger.debug('ST core ready');
+                    resolve();
+                } else {
+                    setTimeout(checkCore, 100);
                 }
+            };
 
-                this.saveSettings();
-                this.logger.info(`Setting "${settingKey}" updated to:`, value);
-            });
+            checkCore();
         });
     }
 
-    async saveSettings() {
-        try {
-            window.extensions_settings[this.MODULE_NAME] = this.settings;
-            if (typeof saveSettingsDebounced === 'function') {
-                saveSettingsDebounced();
-            }
-            this.logger.info('Settings saved.');
-        } catch (error) {
-            this.logger.error('Failed to save settings:', error);
-        }
+    setupEventListeners() {
+        // ST core events
+        eventSource.on(event_types.PROMPT_MANAGER_READY, this.handlePromptManagerInit);
+        eventSource.on(event_types.UNLOAD, this.disable);
     }
 
-    async cleanup() {
-        if (this.observer) {
-            this.observer.disconnect();
-            this.observer = null;
-            this.logger.info('Observer disconnected.');
+    async enable() {
+        if (!this.state.initialized) {
+            throw new Error('Cannot enable: Not initialized');
         }
-
-        if (this.sortableInstance) {
-            this.sortableInstance.destroy();
-            this.sortableInstance = null;
-            this.logger.info('Sortable instance destroyed.');
-        }
-
-        this.domManager.cleanup();
-        this.hierarchyManager.cleanup();
-        this.logger.info('Extension cleaned up.');
-    }
-
-    getActiveCharacterId() {
-        this.logger.trace('getActiveCharacterId', true);
-        this.logger.debug("PromptHierarchyExtension - getActiveCharacterId called, 'this' is:", this);
-        this.logger.debug("PromptHierarchyExtension - getActiveCharacterId, 'this.logger' is:", this.logger);
-        const context = window.SillyTavern.getContext();
         
-        // Use arrow function to ensure 'this' is correct
-        const getActiveCharId = function() {
-            if (!context || !context.character || typeof context.character.getActiveCharacterId !== 'function') {
-                this.logger.warn('Could not access SillyTavern\'s getActiveCharacterId function.');
-                return null;
-            }        
+        this.state.enabled = true;
+        this.logger.debug('Extension enabled');
+    }
 
-            try {
-                return context.character.getActiveCharacterId();
-            } catch (error) {
-                this.logger.error('Error getting active character ID:', error);
-                return null;
+    async disable() {
+        if (this.state.enabled) {
+            await this.domManager?.cleanup();
+            await this.hierarchyManager?.cleanup();
+            
+            this.state.enabled = false;
+            this.logger.debug('Extension disabled');
+        }
+    }
+
+    handlePromptManagerInit(promptManager) {
+        this.logger.debug('Prompt manager initialization');
+        this.state.promptManager = promptManager;
+        this.setupPromptManagerHandlers(promptManager);
+    }
+
+    setupPromptManagerHandlers(promptManager) {
+        if (!promptManager) return;
+
+        promptManager.messages = promptManager.messages || new MessageCollection();
+
+        promptManager.handleDrop = (evt) => {
+            const draggedId = evt.dataTransfer.getData('text');
+            const targetId = evt.target.closest('.completion_prompt_manager_prompt')?.dataset.pmIdentifier;
+            
+            if (draggedId && targetId) {
+                this.hierarchyManager.createGroup(draggedId, targetId);
             }
-        }.bind(this);
+        };
 
-        this.logger.trace('getActiveCharacterId', false); // Exiting
-        return getActiveCharId();
+        this.logger.debug('Prompt manager handlers configured');
     }
 }
 
-// Initialize the extension
-function initializeExtension() {
-    try {
-        window.promptHierarchyExtension = new PromptHierarchyExtension();
-        window.promptHierarchyExtension.init();
-    } catch (error) {
-        console.error('Failed to initialize Prompt Hierarchy Extension:', error);
+// Create extension instance
+const extension = {
+    name: MODULE_NAME,
+    settings: defaultSettings,
+    init: async function() {
+        console.log(`[${MODULE_NAME}] Extension wrapper init`);
+        
+        try {
+            // Wait for ST to fully initialize
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            if (!extension_settings[MODULE_NAME]) {
+                extension_settings[MODULE_NAME] = defaultSettings;
+            }
+            
+            const instance = new PromptHierarchyExtension();
+            const success = await instance.init();
+            
+            if (!success) {
+                console.warn(`[${MODULE_NAME}] Failed to initialize extension`);
+                return false;
+            }
+            
+            // Register cleanup
+            eventSource.on(event_types.UNLOAD, () => {
+                instance.disable();
+            });
+            
+            console.log(`[${MODULE_NAME}] Successfully initialized`);
+            return true;
+        } catch (error) {
+            console.error(`[${MODULE_NAME}] Extension wrapper failed:`, error);
+            return false;
+        }
     }
-}
+};
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeExtension);
-} else {
-    initializeExtension();
-}
+export default extension;
+
+// Initialize extension
+console.log(`[${MODULE_NAME}] Registering extension`);
+new ModuleWorkerWrapper(extension);
