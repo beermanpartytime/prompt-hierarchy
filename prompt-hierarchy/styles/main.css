@@ -1,0 +1,55 @@
+/* Override ST's default styles */
+#completion_prompt_manager_list.hierarchy-enabled {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+}
+
+#completion_prompt_manager_list.hierarchy-enabled .completion_prompt_manager_prompt {
+    position: relative;
+    margin-left: var(--nesting-depth, 0px);
+    transition: margin-left 0.3s ease;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+/* Ensure our controls don't conflict with ST's */
+.prompt-controls {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+/* Override ST's drag handle */
+.prompt-handle {
+    cursor: move;
+    padding: 4px;
+    color: var(--text-color-secondary);
+}
+
+/* Fix collapse animation */
+.prompt-collapse-toggle {
+    transition: transform 0.2s ease;
+    transform-origin: center;
+}
+
+.collapsed .prompt-collapse-toggle {
+    transform: rotate(-90deg);
+}
+
+/* Fix drag and drop visual feedback */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--hover-color) !important;
+}
+
+.sortable-chosen {
+    background: var(--selected-color);
+}
